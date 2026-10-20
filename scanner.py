@@ -111,22 +111,27 @@ def check_headers(resp, findings):
 
 
 def check_cookies(resp, findings):
-    try:
-        cookies = resp.raw.headers.getlist("Set-Cookie")
-    except AttributeError:
-        cookies = []
-    for raw in cookies:
-        parts = [p.strip().lower() for p in raw.split(";")]
-        name = raw.split("=", 1)[0].strip()
-        if "secure" not in parts:
-            add(findings, "Medium", f"Cookie '{name}' has no Secure flag",
-                "Add the Secure flag. The browser then sends the cookie over HTTPS only.")
-        if "httponly" not in parts:
-            add(findings, "Medium", f"Cookie '{name}' has no HttpOnly flag",
-                "Add the HttpOnly flag. JavaScript then cannot read the cookie.")
-        if not any(p.startswith("samesite") for p in parts):
-            add(findings, "Low", f"Cookie '{name}' has no SameSite attribute",
-                "Add 'SameSite=Lax' to reduce cross-site request risk.")
+    seen = set()
+    for r in list(resp.history) + [resp]:
+        try:
+            cookies = r.raw.headers.getlist("Set-Cookie")
+        except AttributeError:
+            continue
+        for raw in cookies:
+            name = raw.split("=", 1)[0].strip()
+            if name in seen:
+                continue
+            seen.add(name)
+            parts = [p.strip().lower() for p in raw.split(";")]
+            if "secure" not in parts:
+                add(findings, "Medium", f"Cookie '{name}' has no Secure flag",
+                    "Add the Secure flag. The browser then sends the cookie over HTTPS only.")
+            if "httponly" not in parts:
+                add(findings, "Medium", f"Cookie '{name}' has no HttpOnly flag",
+                    "Add the HttpOnly flag. JavaScript then cannot read the cookie.")
+            if not any(p.startswith("samesite") for p in parts):
+                add(findings, "Low", f"Cookie '{name}' has no SameSite attribute",
+                    "Add 'SameSite=Lax' to reduce cross-site request risk.")
 
 
 def check_http_redirect(host, findings):
