@@ -73,6 +73,13 @@ Fix: Add 'X-Content-Type-Options: nosniff' to stop MIME type guessing.
 
 
 
+## Tests
+    python -m unittest discover -s tests -v
+
+The tests start a local HTTP server on a free port. They need no network access except the DNS failure test, which passes offline.
+
+
+
 \## License
 
 MIT
