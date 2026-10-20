@@ -9,10 +9,13 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import requests
+import urllib3
 
 TIMEOUT = 8
 UA = {"User-Agent": "sitecheck/0.1 (passive security checker)"}
 SEV_ORDER = {"High": 0, "Medium": 1, "Low": 2}
+VERIFY = True
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 HEADER_RULES = {
     "Strict-Transport-Security": (
@@ -141,13 +144,13 @@ def check_paths(base, findings):
     soft404 = False
     try:
         probe = requests.get(f"{base}/sitecheck-{uuid.uuid4().hex[:10]}", headers=UA,
-                             timeout=TIMEOUT, allow_redirects=False)
+                             timeout=TIMEOUT, allow_redirects=False, verify=VERIFY)
         soft404 = probe.status_code == 200
     except requests.RequestException:
         pass
     for path, sev, title, fix, detect in PATH_RULES:
         try:
-            r = requests.get(base + path, headers=UA, timeout=TIMEOUT, allow_redirects=False)
+            r = requests.get(base + path, headers=UA, timeout=TIMEOUT, allow_redirects=False, verify=VERIFY)
         except requests.RequestException:
             continue
         if detect(r, soft404):
@@ -178,6 +181,7 @@ def build_report(url, tls, findings):
 
 
 def main():
+    global VERIFY
     p = argparse.ArgumentParser(description="Passive website security checker.")
     p.add_argument("url", help="Example: example.com or https://example.com")
     p.add_argument("--i-own-this", action="store_true",
@@ -194,21 +198,34 @@ def main():
     port = u.port or (443 if u.scheme == "https" else 80)
     base = f"{u.scheme}://{u.netloc}"
     findings = []
-
     try:
-        resp = requests.get(url, headers=UA, timeout=TIMEOUT, allow_redirects=True)
-    except requests.RequestException as e:
-        sys.exit(f"Cannot reach {url}: {e}")
+        socket.getaddrinfo(host, port)
+    except socket.gaierror as e:
+        print(f"Cannot resolve {host}: {e}", file=sys.stderr)
+        sys.exit(2)
 
     tls = None
     if u.scheme == "https":
         tls = check_tls(host, port, findings)
+        if tls is None:
+            VERIFY = False
         check_http_redirect(host, findings)
     else:
         add(findings, "High", "Site is served over HTTP only", "Enable HTTPS and redirect HTTP to it.")
-    check_headers(resp, findings)
-    check_cookies(resp, findings)
-    check_paths(base, findings)
+
+    resp = None
+    try:
+        resp = requests.get(url, headers=UA, timeout=TIMEOUT, allow_redirects=True, verify=VERIFY)
+    except requests.RequestException as e:
+        if not findings:
+            print(f"Cannot reach {url}: {e}", file=sys.stderr)
+            sys.exit(2)
+        print(f"Page request failed: {e}", file=sys.stderr)
+
+    if resp is not None:
+        check_headers(resp, findings)
+        check_cookies(resp, findings)
+        check_paths(base, findings)
 
     report = build_report(url, tls, findings)
     print(report)

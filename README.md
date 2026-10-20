@@ -48,7 +48,7 @@ It does not exploit anything. It does not brute-force paths. It sends about 10 r
 
 
 
-Exit code is 1 if the scan finds a High issue. Exit code is 0 otherwise.
+Exit code is 1 if the scan finds a High issue. Exit code is 2 if the scan cannot run. Exit code is 0 otherwise.
 
 
 
